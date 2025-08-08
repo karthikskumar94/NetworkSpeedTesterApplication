@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Network Speed Tester</title>
+    <script>
+    async function runTest(endpoint, resultId) {
+        document.getElementById(resultId).innerText = "Running...";
+        try {
+            const response = await fetch(`/api/speedtest/${endpoint}`, {
+                method: endpoint === 'upload' ? 'POST' : 'GET'
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with status ${response.status}`);
+            }
+
+            const text = await response.text();
+            document.getElementById(resultId).innerText = text;
+        } catch (error) {
+            document.getElementById(resultId).innerText = "Error: " + error.message;
+        }
+    }
+</script>
+</head>
+<body>
+<h1>Network Speed Tester</h1>
+
+<button onclick="runTest('ping', 'pingResult')">Ping Test</button>
+<p id="pingResult"></p>
+
+<button onclick="runTest('download', 'downloadResult')">Download Speed Test</button>
+<p id="downloadResult"></p>
+
+<button onclick="runTest('upload', 'uploadResult')">Upload Speed Test</button>
+<p id="uploadResult"></p>
+
+</body>
+</html>
