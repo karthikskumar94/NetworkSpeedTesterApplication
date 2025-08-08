@@ -39,7 +39,7 @@ public class SpeedTestController {
     public ResponseEntity<String> testDownloadSpeed() {
         try {
             long start = System.currentTimeMillis();
-            URL url = URI.create("https://speed.hetzner.de/1MB.bin").toURL();
+            URL url = URI.create("http://speedtest.tele2.net/100MB.zip").toURL();
             InputStream in = url.openStream();
             byte[] buffer = new byte[1024];
             int bytesRead;

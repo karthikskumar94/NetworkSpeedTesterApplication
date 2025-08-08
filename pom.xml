@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.example.speedtest</groupId>
 	<artifactId>NetworkSpeedTesterApplication</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0</version>
 	<name>NetworkSpeedTesterApplication</name>
 	<description>Network Speed Tester using Java Spring Boot</description>
 	<url/>
