@@ -1,48 +1,244 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Network Speed Tester</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<meta charset="UTF-8" />
+<title>Network Speed Tester</title>
+<link
+	href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+	rel="stylesheet" />
+<style>
+.speed-value {
+	font-size: 1.5rem;
+	font-weight: 700;
+}
+
+.mono {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "Courier New", monospace;
+}
+</style>
 </head>
-<body class="bg-light text-center">
-<div class="container py-5">
-    <h1 class="mb-4">Network Speed Tester</h1>
+<body class="bg-light">
+	<div class="container py-5">
+		<h1 class="mb-4 text-center">Network Speed Tester</h1>
 
-    <div class="row g-4">
-        <div class="col-md-4">
-            <button class="btn btn-primary w-100" onclick="runTest('ping', 'pingResult')">Run Ping Test</button>
-            <div class="mt-2 alert alert-info" id="pingResult">Result will appear here</div>
-        </div>
+		<div class="row g-4">
+			<!-- Ping -->
+			<div class="col-md-6">
+				<div class="card shadow-sm h-100">
+					<div class="card-body">
+						<h5 class="card-title">Ping</h5>
+						<p class="text-muted">Live latency samples to 8.8.8.8</p>
+						<div class="d-flex align-items-center gap-3 mb-3">
+							<button id="pingBtn" class="btn btn-primary"
+								onclick="startPing()">Start Ping (x5)</button>
+							<span id="pingLast" class="speed-value">-- ms</span>
+						</div>
+						<div class="progress">
+							<div id="pingProgress" class="progress-bar" style="width: 0%"></div>
+						</div>
+						<div class="mt-3 mono small" id="pingLog"></div>
+					</div>
+				</div>
+			</div>
 
-        <div class="col-md-4">
-            <button class="btn btn-success w-100" onclick="runTest('download', 'downloadResult')">Run Download Test</button>
-            <div class="mt-2 alert alert-info" id="downloadResult">Result will appear here</div>
-        </div>
+			<!-- Download -->
+			<div class="col-md-6">
+				<div class="card shadow-sm h-100">
+					<div class="card-body">
+						<h5 class="card-title">Download</h5>
+						<p class="text-muted">Live average speed while downloading a
+							test file</p>
+						<div class="d-flex align-items-center gap-3 mb-3">
+							<button id="dlBtn" class="btn btn-success"
+								onclick="startDownload()">Start Download</button>
+							<span id="dlSpeed" class="speed-value">-- Mbps</span>
+						</div>
+						<div class="progress">
+							<div id="dlProgress" class="progress-bar bg-success"
+								style="width: 0%"></div>
+						</div>
+						<div class="mt-3 mono small" id="dlLog"></div>
+					</div>
+				</div>
+			</div>
+		</div>
 
-        <div class="col-md-4">
-            <button class="btn btn-warning w-100" onclick="runTest('upload', 'uploadResult')">Run Upload Test</button>
-            <div class="mt-2 alert alert-info" id="uploadResult">Result will appear here</div>
-        </div>
-    </div>
-</div>
+		<!-- Upload (live) -->
+		<!-- Upload (live) -->
+		<div class="row g-4 mt-1">
+			<div class="col-md-8 mx-auto">
+				<div class="card shadow-sm h-100">
+					<div class="card-body">
+						<h5 class="card-title">Upload (Live)</h5>
+						<p class="text-muted">
+							Streams a generated payload and shows live average Mbps. <span
+								class="text-secondary"> (Set <code>app.upload.url</code>
+								for real network upload; otherwise it simulates.)
+							</span>
+						</p>
 
-<script>
-    async function runTest(endpoint, resultId) {
-        const resultBox = document.getElementById(resultId);
-        resultBox.innerText = "Running...";
+						<div class="row g-2 align-items-center mb-3">
+							<div class="col-12 col-md-6 d-flex gap-2">
+								<button id="ulStart" class="btn btn-warning"
+									onclick="startUpload()">Start Upload</button>
+								<button id="ulStop" class="btn btn-outline-secondary"
+									onclick="stopUpload()" disabled>Stop</button>
+							</div>
+							<div class="col-12 col-md-6 d-flex align-items-center gap-3">
+								<span id="ulSpeed" class="speed-value">-- Mbps</span> <small
+									class="text-muted mono" id="ulLog"></small>
+							</div>
+						</div>
 
-        try {
-            const response = await fetch(`/api/speedtest/${endpoint}`, {
-                method: endpoint === 'upload' ? 'POST' : 'GET'
-            });
+						<div class="progress" role="progressbar"
+							aria-label="Upload Progress" aria-valuemin="0"
+							aria-valuemax="100">
+							<div id="ulProgress" class="progress-bar bg-warning"
+								style="width: 0%"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
 
-            const text = await response.text();
-            resultBox.innerText = text;
-        } catch (error) {
-            resultBox.innerText = "Error: " + error.message;
-        }
+		<script>
+  // Simple helper (used by old single-shot endpoints if needed)
+  async function runOnce(url, outId) {
+    const el = document.getElementById(outId);
+    el.textContent = 'Running...';
+    try {
+      const resp = await fetch(url, { method: url.endsWith('upload') ? 'POST' : 'GET' });
+      el.textContent = await resp.text();
+    } catch (e) { el.textContent = 'Error: ' + e.message; }
+  }
+
+  // ---- PING (SSE) ----
+  let pingES;
+  function startPing() {
+    const btn = document.getElementById('pingBtn');
+    const bar = document.getElementById('pingProgress');
+    const last = document.getElementById('pingLast');
+    const log = document.getElementById('pingLog');
+    btn.disabled = true; bar.style.width = '0%'; last.textContent = '-- ms'; log.textContent = '';
+
+    pingES = new EventSource('/api/speedtest/ping/stream?count=5&intervalMs=500');
+    const total = 5; let got = 0;
+
+    pingES.addEventListener('ping', (e) => {
+      const data = JSON.parse(e.data);
+      got++;
+      last.textContent = data.latencyMs + ' ms';
+      bar.style.width = (got / total * 100).toFixed(0) + '%';
+      log.textContent += `#${data.seq}: ${data.latencyMs} ms (ok=${data.ok})\n`;
+    });
+    pingES.addEventListener('done', () => { pingES.close(); btn.disabled = false; });
+    pingES.addEventListener('error', () => { pingES.close(); btn.disabled = false; });
+  }
+
+  // ---- DOWNLOAD (SSE) ----
+  let dlES;
+  function startDownload() {
+    const btn = document.getElementById('dlBtn');
+    const bar = document.getElementById('dlProgress');
+    const speed = document.getElementById('dlSpeed');
+    const log = document.getElementById('dlLog');
+    btn.disabled = true; bar.style.width = '0%'; speed.textContent = '-- Mbps'; log.textContent = '';
+
+    dlES = new EventSource('/api/speedtest/download/stream');
+    dlES.addEventListener('progress', (e) => {
+      const data = JSON.parse(e.data);
+      const percent = (data.percent && data.percent >= 0) ? data.percent : 0;
+      bar.style.width = percent.toFixed(0) + '%';
+      speed.textContent = data.avgMbps + ' Mbps';
+      log.textContent = `Downloaded: ${Math.round(data.bytes/1024/1024)} MB`;
+    });
+    dlES.addEventListener('done', (e) => {
+      const data = JSON.parse(e.data);
+      bar.style.width = '100%';
+      speed.textContent = data.avgMbps + ' Mbps';
+      log.textContent += `\nCompleted in ${data.seconds}s`;
+      dlES.close(); btn.disabled = false;
+    });
+    dlES.addEventListener('error', () => { dlES.close(); btn.disabled = false; });
+  }
+
+//---- UPLOAD (SSE) ----
+  let ulES;
+  let ulStopped = false;
+  let uploadId = null;
+
+  function startUpload() {
+    const startBtn = document.getElementById('ulStart');
+    const stopBtn  = document.getElementById('ulStop');
+    const bar      = document.getElementById('ulProgress');
+    const speed    = document.getElementById('ulSpeed');
+    const log      = document.getElementById('ulLog');
+
+    // Close any old stream first
+    if (ulES) { try { ulES.close(); } catch(_) {} }
+
+    // Generate a unique id for this run
+    uploadId = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+                                             : (Date.now() + "-" + Math.random());
+
+    ulStopped = false;
+    startBtn.disabled = true;
+    stopBtn.disabled  = false;
+    bar.style.width   = '0%';
+    speed.textContent = '-- Mbps';
+    log.textContent   = '';
+
+    // IMPORTANT: pass id in query string
+    ulES = new EventSource(`/api/speedtest/upload/stream?id=${encodeURIComponent(uploadId)}&sizeMb=10&chunkKb=128`);
+
+    ulES.addEventListener('progress', (e) => {
+      if (ulStopped) return;
+      const data = JSON.parse(e.data);
+      bar.style.width   = data.percent.toFixed(0) + '%';
+      speed.textContent = data.avgMbps + ' Mbps';
+      log.textContent   = `Uploaded: ${Math.round(data.bytes/1024/1024)} MB`;
+    });
+
+    ulES.addEventListener('done', (e) => {
+      if (ulStopped) return;
+      const data = JSON.parse(e.data);
+      bar.style.width   = '100%';
+      speed.textContent = data.avgMbps + ' Mbps';
+      log.textContent  += ` | Completed in ${data.seconds}s`;
+      cleanupUpload();
+    });
+
+    ulES.addEventListener('error', () => {
+      cleanupUpload();
+    });
+  }
+
+  async function stopUpload() {
+    ulStopped = true;
+
+    // Tell the server to cancel this id
+    if (uploadId) {
+      try {
+        await fetch(`/api/speedtest/upload/cancel?id=${encodeURIComponent(uploadId)}`, { method: 'POST' });
+      } catch (_) { /* ignore */ }
     }
+
+    // Close the SSE
+    if (ulES) { try { ulES.close(); } catch(_) {} }
+    ulES = null;
+    cleanupUpload();
+  }
+
+  function cleanupUpload() {
+    const startBtn = document.getElementById('ulStart');
+    const stopBtn  = document.getElementById('ulStop');
+    startBtn.disabled = false;
+    stopBtn.disabled  = true;
+  }
+
+  // Optional: close stream if navigating away
+  window.addEventListener('beforeunload', () => { if (ulES) ulES.close(); });
 </script>
 </body>
 </html>
